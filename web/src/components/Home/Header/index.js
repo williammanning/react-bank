@@ -5,7 +5,7 @@ import './style.scss';
 
 const HomeHeader = props => (
    <header className="home-header">
-      <h1>Welcome to react-bank</h1>
+      <h1>JFrog Binary Bank</h1>
 
       <p>We have {props.clientsCount} clients right now!</p>
    </header>

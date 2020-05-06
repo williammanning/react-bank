@@ -1,0 +1,105 @@
+pipeline {
+    agent any
+
+    stages {
+
+        stage('Cleanup') {
+            steps {
+                script {
+                    cleanWs()
+                }
+            }
+        }
+
+        stage('Clone') {
+            steps {
+                script {
+                    git url: 'https://github.com/williammanning/react-bank.git',
+                            branch: 'master',
+                            credentialsId: GIT_CREDENTIALS
+                }
+            }
+        }
+
+        stage('Dependencies') {
+            steps {
+                script {
+                    dir('./web/') {
+                        sh "curl -fL https://getcli.jfrog.io | sh"
+                        sh "chmod +x jfrog"
+                    }
+                }
+            }
+        }
+
+        stage('Configure Artifactory') {
+            steps {
+                script {
+                    dir('./web/') {
+                        withCredentials([[$class: 'UsernamePasswordMultiBinding', credentialsId: CREDENTIALS, usernameVariable: 'USERNAME', passwordVariable: 'PASSWORD']]) {
+                            sh "./jfrog rt config $SERVER_NAME --url $SERVER_URL --user ${USERNAME} --password ${PASSWORD}"
+                            sh "./jfrog rt use $SERVER_NAME"
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('Build') {
+            steps {
+                script {
+                    dir('./web/') {
+                        sh "npm install shelljs"
+                        sh 'sed -i "s/1.0.0/1.0.0-$BUILD_NUMBER/g" package.json'
+                        sh "./jfrog rt npmc --server-id-resolve $SERVER_NAME --server-id-deploy $SERVER_NAME --repo-resolve npm-bank-app-virt --repo-deploy npm-bank-app-virt"
+                        sh "./jfrog rt npm-install --build-name=${env.JOB_NAME} --build-number=${env.BUILD_NUMBER}"
+                    }
+                }
+            }
+        }
+
+        stage('Publish') {
+            steps {
+                script {
+                    dir('./web/') {
+                        sh "./jfrog rt bag ${env.JOB_NAME} ${env.BUILD_NUMBER}"
+                        sh "./jfrog rt bce ${env.JOB_NAME} ${env.BUILD_NUMBER}"
+                        sh "./jfrog rt npm-publish --build-name=${env.JOB_NAME} --build-number=${env.BUILD_NUMBER}"
+                        sh "./jfrog rt bp ${env.JOB_NAME} ${env.BUILD_NUMBER}"
+                    }
+                }
+            }
+        }
+
+        stage('Xray scan') {
+            steps {
+                script {
+                    sleep 10    
+                    if (XRAY_SCAN == "YES") {
+                        dir('./web/') {
+                            sh "./jfrog rt bs ${env.JOB_NAME} ${env.BUILD_NUMBER} --fail=false"
+                        }
+                    } else {
+                        println "No Xray scan performed. To enable set XRAY_SCAN = YES"
+                    }
+                }
+            }
+        }
+        
+        /*
+        stage ('Test')
+                {
+                    // testing here
+                }
+        */
+        stage('Promote') {
+            steps {
+                script {
+                    dir('./web/') {
+                        sh "./jfrog rt bpr ${env.JOB_NAME} ${env.BUILD_NUMBER} npm-bank-app-prod-local --status='Released'"
+                    }
+                }
+            }
+        }
+    }
+}

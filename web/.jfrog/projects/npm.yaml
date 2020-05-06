@@ -1,0 +1,8 @@
+version: 1
+type: npm
+resolver:
+  repo: npm-bank-app-virt
+  serverId: artifactory-unified
+deployer:
+  repo: npm-bank-app-dev-local
+  serverId: artifactory-unified
